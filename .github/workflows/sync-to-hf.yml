@@ -1,0 +1,35 @@
+name: Sync to Hugging Face Space
+
+on:
+  # Kích hoạt khi có push lên nhánh 'main'
+  push:
+    branches: [ main ]
+
+jobs:
+  sync-to-hub:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Lấy code từ repo GitHub
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      # 2. Push code đó sang Hugging Face Space
+      - name: Push to HF Space
+        env:
+          # Sử dụng Secret HF_TOKEN đã tạo
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # Cấu hình git với user của bạn
+          git config --global user.email "hf-actions@github.com"
+          git config --global user.name "GitHub Actions"
+          
+          # Thêm repo HF Space làm "remote"
+          # Thay 'NghiaUS/vietfactcheck-demo' bằng tên Space của bạn
+          git remote add hf_space "https://NghiaUS:${HF_TOKEN}@huggingface.co/spaces/NghiaUS/vietfactcheck-demo"
+          
+          # Push code từ nhánh 'main' của GitHub sang nhánh 'main' của HF
+          # --force là bắt buộc để ghi đè code cũ trên HF
+          git push hf_space main --force
