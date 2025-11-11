@@ -771,15 +771,19 @@ def fact_check_full(text):
 
     results = []
     for claim in claims:
-        docs = search_documents(claim, max_docs=6)
+        docs = process_claim(claim)
 
         evidences = []
         for d in docs:
-            trust = compute_trust_score(claim, d["text"], d["url"])
-            stance = predict_stance(claim, d["text"])
+            snippet = d.get("snippet", "")
+            link = d.get("link", "")
+            trust = d.get("trust_score", 0)
+
+            stance = predict_stance(claim, snippet)
+
             evidences.append({
-                "text": d["text"],
-                "link": d["url"],
+                "text": snippet,
+                "link": link,
                 "stance_scores": stance,
                 "trust_score": trust
             })
