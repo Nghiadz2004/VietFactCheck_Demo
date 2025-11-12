@@ -810,13 +810,30 @@ Stance ratio: {agg['stance_ratio']}
 
 
 # ============= Gradio UI =============
-ui = gr.Interface(
-    fn=fact_check_full,
-    inputs=gr.Textbox(lines=5, placeholder="Nhập 1 hoặc nhiều câu..."),
-    outputs=gr.Markdown(),
-    title="🇻🇳 Vietnamese Fact-Check – Full Pipeline",
-    description="Nhập một đoạn văn, hệ thống sẽ chuẩn hóa, tách claim, tìm bằng chứng, tính stance + trust và kết luận."
-)
+with gr.Blocks(title="🇻🇳 Vietnamese Fact-Check – Chat") as ui:
+    gr.Markdown(
+        """
+        # 🇻🇳 Vietnamese Fact-Check Chat
+        Nhập claim hoặc đoạn văn, hệ thống sẽ kiểm chứng & trả kết luận.
+        """
+    )
+
+    chat = gr.Chatbot(height=500)
+
+    msg = gr.Textbox(
+        placeholder="Nhập claim cần kiểm chứng...",
+        show_label=False
+    )
+
+    clear = gr.Button("Xoá cuộc hội thoại")
+
+    def chat_fn(history, message):
+        reply = fact_check_full(message)
+        history.append((message, reply))
+        return history, ""
+
+    msg.submit(chat_fn, [chat, msg], [chat, msg])
+    clear.click(lambda: [], None, chat)
 
 if __name__ == "__main__":
     ui.launch()
