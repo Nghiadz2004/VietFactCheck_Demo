@@ -818,7 +818,7 @@ with gr.Blocks(title="🇻🇳 Vietnamese Fact-Check – Chat") as ui:
         """
     )
 
-    chat = gr.Chatbot(height=500)
+    chat = gr.Chatbot(show_label=False, bubble_colors=("#DCF8C6", "#E8E8E8"))
 
     msg = gr.Textbox(
         placeholder="Nhập claim cần kiểm chứng...",
