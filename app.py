@@ -810,6 +810,11 @@ Stance ratio: {agg['stance_ratio']}
 
 
 # ============= Gradio UI =============
+def chat_fn(history, message):
+        reply = fact_check_full(message)
+        history.append((message, reply))
+        return history, ""
+
 with gr.Blocks(title="🇻🇳 Vietnamese Fact-Check – Chat") as ui:
     gr.Markdown(
         """
@@ -818,7 +823,7 @@ with gr.Blocks(title="🇻🇳 Vietnamese Fact-Check – Chat") as ui:
         """
     )
 
-    chat = gr.Chatbot(show_label=False, bubble_colors=("#DCF8C6", "#E8E8E8"))
+    chat = gr.Chatbot(show_label=False)
 
     msg = gr.Textbox(
         placeholder="Nhập claim cần kiểm chứng...",
@@ -826,11 +831,6 @@ with gr.Blocks(title="🇻🇳 Vietnamese Fact-Check – Chat") as ui:
     )
 
     clear = gr.Button("Xoá cuộc hội thoại")
-
-    def chat_fn(history, message):
-        reply = fact_check_full(message)
-        history.append((message, reply))
-        return history, ""
 
     msg.submit(chat_fn, [chat, msg], [chat, msg])
     clear.click(lambda: [], None, chat)
