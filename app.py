@@ -811,29 +811,75 @@ Stance ratio: {agg['stance_ratio']}
 
 # ============= Gradio UI =============
 def chat_fn(history, message):
-        reply = fact_check_full(message)
-        history.append((message, reply))
+    if not message.strip():
         return history, ""
 
-with gr.Blocks(title="🇻🇳 Vietnamese Fact-Check – Chat") as ui:
+    reply = fact_check_full(message)
+    history.append((message, reply))
+    return history, ""
+
+def init_chat():
+    return [
+        (
+            None,
+            "🌟 **Chào bạn! Đây là hệ thống kiểm chứng thông tin tiếng Việt.**\n\n"
+            "Bạn có thể nhập bất kỳ claim nào để kiểm chứng.\n"
+        )
+    ]
+
+
+with gr.Blocks(
+    title="Vietnamese Fact-Check – Chat",
+    css="""
+    #send-btn button {
+        background: none !important;
+        border: none !important;
+        padding: 0 !important;
+    }
+    #send-btn img {
+        width: 30px;
+        height: 30px;
+        cursor: pointer;
+    }
+    """
+) as ui:
+
     gr.Markdown(
         """
         # 🇻🇳 Vietnamese Fact-Check Chat
-        Nhập claim hoặc đoạn văn, hệ thống sẽ kiểm chứng & trả kết luận.
+        *Một chatbot kiểm chứng thông tin Tiếng Việt*
         """
     )
 
     chat = gr.Chatbot(show_label=False)
+    chat.value = init_chat()
 
-    msg = gr.Textbox(
-        placeholder="Nhập claim cần kiểm chứng...",
-        show_label=False
-    )
+    with gr.Row():
+        msg = gr.Textbox(
+            placeholder="Nhập claim cần kiểm chứng...",
+            show_label=False,
+            lines=1,
+            container=False,
+            scale=8
+        )
 
-    clear = gr.Button("Xoá cuộc hội thoại")
+        # 🟢 Nút gửi = icon
+        send_btn = gr.Button(
+            value="<img src='assets/send.png'>",
+            elem_id="send-btn",
+            scale=1
+        )
 
+    clear = gr.Button("🧹 Xoá cuộc hội thoại")
+
+    # Gửi bằng Enter
     msg.submit(chat_fn, [chat, msg], [chat, msg])
-    clear.click(lambda: [], None, chat)
+
+    # Gửi bằng nút icon
+    send_btn.click(chat_fn, [chat, msg], [chat, msg])
+
+    # Reset + giữ lời chào
+    clear.click(fn=lambda: init_chat(), outputs=chat)
 
 if __name__ == "__main__":
     ui.launch()
