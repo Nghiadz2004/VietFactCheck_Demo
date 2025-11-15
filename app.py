@@ -836,17 +836,12 @@ with gr.Blocks(
         border: none !important;
         padding: 0 !important;
     }
-    #send-btn img {
-        width: 30px;
-        height: 30px;
-        cursor: pointer;
-    }
     """
 ) as ui:
 
     gr.Markdown(
         """
-        # 🇻🇳 Vietnamese Fact-Check Chat
+        # Vietnamese Fact-Check Chat
         *Một chatbot kiểm chứng thông tin Tiếng Việt*
         """
     )
@@ -865,7 +860,8 @@ with gr.Blocks(
 
         # 🟢 Nút gửi = icon
         send_btn = gr.Button(
-            value="<img src='assets/send.png'>",
+            value="",
+            icon="assets/send.png",
             elem_id="send-btn",
             scale=1
         )
