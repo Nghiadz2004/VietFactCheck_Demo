@@ -436,8 +436,11 @@ with gr.Blocks(
 
     # RESULT: Markdown + Plot
     with gr.Row():
-        result_md = gr.Markdown(value="", visible=False, elem_id="result-card", scale=7)
-        result_plot = gr.Plot(visible=False, elem_id="result-plot", scale=3)
+        with gr.Column(scale=7):
+            result_md = gr.Markdown(value="", visible=False, elem_id="result-card")
+
+        with gr.Column(scale=3):
+            result_plot = gr.Plot(visible=False, elem_id="result-plot")
 
     # EVENTS
     send_btn.click(fn=verify_fn, inputs=[claim_box], outputs=[result_md, result_plot])
