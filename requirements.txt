@@ -17,3 +17,4 @@ aiohttp
 underthesea
 tiktoken
 sentencepiece
+plotly
