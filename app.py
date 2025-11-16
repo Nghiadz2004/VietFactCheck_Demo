@@ -394,57 +394,198 @@ def render_stance_chart(ratio):
 def verify_fn(claim: str):
     claim = (claim or "").strip()
     if not claim:
-        # hide chart and clear markdown
-        return gr.update(value="", visible=False), gr.update(visible=False)
+        return (
+            gr.update(value="", visible=False),
+            gr.update(visible=False),
+            gr.update(visible=False),
+            "",
+            ""
+        )
+
     md, stance_ratio = fact_check_full(claim)
     fig = render_stance_chart(stance_ratio)
-    # return (markdown output, plot output)
-    return gr.update(value=md, visible=True), fig
+
+    support = stance_ratio.get("Support", 0)
+    refute = stance_ratio.get("Refute", 0)
+    neutral = stance_ratio.get("Neutral", 0)
+
+    # ---------- Badge Verdict ----------
+    verdict_text = md.split("Kết luận:")[1].split("(")[0].strip()
+    if verdict_text == "True":
+        verdict_badge = '<div class="badge badge-true">Supported</div>'
+    elif verdict_text == "False":
+        verdict_badge = '<div class="badge badge-false">Refuted</div>'
+    else:
+        verdict_badge = '<div class="badge badge-unknown">Unknown</div>'
+
+    # ---------- Confidence bar ----------
+    conf = int(float(md.split("độ tin cậy:")[1].split(")")[0].strip()) * 100)
+    conf_bar = f"""
+        <div class="conf-box">
+            <div class="conf-label">ĐỘ TIN CẬY (CONFIDENCE)</div>
+            <div class="conf-bar-bg">
+                <div class="conf-bar-fill" style="width:{conf}%"></div>
+            </div>
+            <div class="conf-num">{conf}%</div>
+        </div>
+    """
+
+    # ---------- Stance Ratio bar ----------
+    stance_bar = f"""
+    <div class="stance-box">
+        <div class="stance-title">STANCE RATIO</div>
+        <div class="stance-bar">
+            <div class="sb sb-support" style="width:{support*100}%"></div>
+            <div class="sb sb-refute" style="width:{refute*100}%"></div>
+            <div class="sb sb-neutral" style="width:{neutral*100}%"></div>
+        </div>
+        <div class="stance-legend">
+            <span class="lg green">Supporting: {support*100:.0f}%</span>
+            <span class="lg red">Refuting: {refute*100:.0f}%</span>
+            <span class="lg grey">Neutral: {neutral*100:.0f}%</span>
+        </div>
+    </div>
+    """
+
+    # ---------- Extract best evidence ----------
+    try:
+        best_block = md.split("**Bằng chứng mạnh nhất:**")[1]
+        src_link = best_block.split("- Nguồn:")[1].split("\n")[0].strip()
+        src_snip = best_block.split("- Nội dung:")[1].strip()
+    except:
+        src_link = "(không link)"
+        src_snip = "Không tìm thấy nội dung."
+
+    evidence_html = f"""
+    <div class="evidence-box">
+        <div class="ev-title">Bằng chứng mạnh nhất (Strongest Evidence)</div>
+        <div class="ev-subtitle">NGUỒN (SOURCE)</div>
+        <div class="ev-link"><a href="{src_link}" target="_blank">{src_link}</a></div>
+
+        <div class="ev-subtitle">NỘI DUNG (CONTENT)</div>
+        <div class="ev-snippet">"{src_snip}"</div>
+    </div>
+    """
+
+    return (
+        gr.update(value=f'<div class="claim-box">"{claim}"</div>', visible=True),
+        gr.update(value=verdict_badge, visible=True),
+        fig,
+        stance_bar,
+        evidence_html
+    )
+
 
 with gr.Blocks(
     title="VN Claim Verifier",
     css="""
-    body { background-color: #f5f6f8; font-family: Inter, sans-serif; }
-    #title-bar { font-size: 26px; font-weight:700; padding:20px 0; margin-bottom:10px; }
-    #input-box textarea { font-size:18px; padding:14px; border-radius:12px; border:1px solid #d5d7da; background:white; }
-    #send-btn button { height:48px; width:48px; border-radius:10px; background:#1a73e8 !important; color:white; font-size:18px; border:none; }
-    #result-card { background:white; padding:20px; border-radius:14px; margin-top:12px; box-shadow:0 3px 12px rgba(0,0,0,0.06); font-size:15px; line-height:1.5; }
+    body {
+        background-color: #f3f4f6;
+        font-family: Inter, sans-serif;
+    }
+
+    .claim-box {
+        background:#1E63E9;
+        padding:18px;
+        border-radius:12px;
+        color:white;
+        font-size:18px;
+        margin-bottom:12px;
+    }
+
+    .badge {
+        padding:6px 14px;
+        border-radius:10px;
+        color:white;
+        display:inline-block;
+        font-size:14px;
+        margin-bottom:6px;
+    }
+    .badge-true { background:#28A745; }
+    .badge-false { background:#C62828; }
+    .badge-unknown { background:#757575; }
+
+    /* Confidence Bar */
+    .conf-box { margin:16px 0; }
+    .conf-label { font-size:13px; margin-bottom:6px; color:#444; }
+    .conf-bar-bg {
+        width:100%; height:10px;
+        background:#d7d7d7; border-radius:8px;
+        position:relative;
+    }
+    .conf-bar-fill {
+        height:10px;
+        background:#1E63E9;
+        border-radius:8px;
+    }
+    .conf-num { text-align:right; font-size:14px; font-weight:600; margin-top:4px; }
+
+    /* Stance Bar */
+    .stance-title { font-weight:600; margin-bottom:8px; }
+    .stance-bar { height:16px; display:flex; width:100%; border-radius:8px; overflow:hidden; }
+    .sb-support { background:#2ecc71; }
+    .sb-refute { background:#ff5252; }
+    .sb-neutral { background:#bdbdbd; }
+    .stance-legend { margin-top:6px; font-size:13px; color:#555; }
+    .stance-legend .lg { margin-right:14px; }
+    .lg.green { color:#2ecc71; }
+    .lg.red { color:#ff5252; }
+    .lg.grey { color:#757575; }
+
+    /* Evidence box */
+    .evidence-box {
+        background:white;
+        padding:20px;
+        border-radius:12px;
+        margin-top:20px;
+        box-shadow:0px 0px 12px rgba(0,0,0,0.05);
+    }
+    .ev-title { font-weight:700; margin-bottom:10px; }
+    .ev-subtitle { font-size:12px; color:#666; margin-bottom:4px; margin-top:12px; }
+    .ev-link a { color:#1E63E9; font-weight:600; text-decoration:none; }
+    .ev-snippet {
+        background:#eef3ff;
+        padding:12px;
+        border-radius:8px;
+        color:#333;
+        margin-top:6px;
+        font-style:italic;
+    }
     """
 ) as ui:
 
-    # HEADER
     gr.Markdown(
         """
-        <div id="title-bar">🔎 <span style="color:#1a73e8">Verify a Claim</span></div>
-        <div style="color:#777; margin-bottom:12px;">Enter a statement, headline or claim to analyze its validity.</div>
-        """
+        # <span style='color:#1E63E9'>Verify a Claim</span>
+        Enter a statement, news headline, or claim to analyze its validity.
+        """,
     )
 
-    # INPUT ROW
     with gr.Row():
         claim_box = gr.Textbox(
-            placeholder="Nhập claim cần kiểm chứng…",
-            lines=2,
-            elem_id="input-box",
-            scale=8
+            placeholder="Enter a new statement to verify...",
+            lines=1,
+            scale=10
         )
-        send_btn = gr.Button(
-            value="➤",
-            elem_id="send-btn",
-            scale=1
-        )
+        send_btn = gr.Button("➤", elem_id="send-btn", scale=1)
 
-    # RESULT: Markdown + Plot
-    with gr.Row():
-        with gr.Column(scale=7):
-            result_md = gr.Markdown(value="", visible=False, elem_id="result-card")
+    claim_display = gr.HTML(visible=False)
+    verdict_display = gr.HTML(visible=False)
+    stance_plot = gr.Plot(visible=False)
+    stance_bar = gr.HTML(visible=False)
+    evidence_card = gr.HTML(visible=False)
 
-        with gr.Column(scale=3):
-            result_plot = gr.Plot(visible=False, elem_id="result-plot")
+    send_btn.click(
+        verify_fn,
+        inputs=[claim_box],
+        outputs=[claim_display, verdict_display, stance_plot, stance_bar, evidence_card]
+    )
 
-    # EVENTS
-    send_btn.click(fn=verify_fn, inputs=[claim_box], outputs=[result_md, result_plot])
-    claim_box.submit(fn=verify_fn, inputs=[claim_box], outputs=[result_md, result_plot])
+    claim_box.submit(
+        verify_fn,
+        inputs=[claim_box],
+        outputs=[claim_display, verdict_display, stance_plot, stance_bar, evidence_card]
+    )
 
 if __name__ == "__main__":
     ui.launch()
