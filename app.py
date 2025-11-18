@@ -341,36 +341,66 @@ def fact_check_full(text: str):
     processed = preprocess_text(text)
     claims = extract_claims(processed)
     if not claims:
-        return "Không tìm thấy claim có thể kiểm chứng.", {"Support":0.0,"Refute":0.0,"Neutral":1.0}
+        return {
+            "md": "Không tìm thấy claim có thể kiểm chứng.",
+            "ratio": {"Support":0.0,"Refute":0.0,"Neutral":1.0},
+            "best_evidence": None,
+            "verdict": "Unknown",
+            "confidence": 0.0
+        }
+
     blocks=[]
-    first_agg=None
+    final_ratio=None
+    final_verdict="Unknown"
+    final_confidence=0.0
+    final_best_evidence=None
+
     for claim in claims:
         docs = process_claim(claim)
+
         evidences=[]
         for d in docs:
             snippet = d.get("snippet","") or ""
             link = d.get("link","") or ""
-            trust = d.get("trust_score", 0.0) or 0.0
+            trust = d.get("trust_score", 0.0)
             stance = predict_stance(claim, snippet)
-            evidences.append({"text": snippet, "link": link, "stance_scores": stance, "trust_score": trust})
+            evidences.append({
+                "text": snippet,
+                "link": link,
+                "stance_scores": stance,
+                "trust_score": trust
+            })
+
         if not evidences:
             blocks.append(f"### Claim: **{claim}**\nKhông tìm được bằng chứng.\n")
             continue
-        best = max(evidences, key=lambda e: e.get("trust_score",0))
+
+        # strongest evidence
+        best = max(evidences, key=lambda e: e["trust_score"])
+        
+        # global verdict
         agg = aggregate_verdict(evidences)
-        if first_agg is None:
-            first_agg = agg
-        block = (
+
+        if final_ratio is None:
+            final_ratio = agg["stance_ratio"]
+            final_verdict = agg["verdict"]
+            final_confidence = agg["confidence"]
+            final_best_evidence = best
+
+        blocks.append(
             f"### Claim: **{claim}**\n"
-            f"Kết luận: **{agg['verdict']}** (độ tin cậy: {agg['confidence']:.2f})  \n"
-            f"Stance ratio: {agg['stance_ratio']}\n\n"
-            f"**Bằng chứng mạnh nhất:**  \n- Nguồn: {best.get('link','(no link)')}  \n"
-            f"- Nội dung: {best.get('text','')[:600]}...\n"
+            f"Kết luận: **{agg['verdict']}** (độ tin cậy: {agg['confidence']:.2f})\n\n"
+            f"**Bằng chứng mạnh nhất:**\n- Nguồn: {best['link']}\n"
+            f"- Nội dung: {best['text'][:600]}...\n"
         )
-        blocks.append(block)
-    md_text = "\n".join(blocks)
-    stance_ratio = first_agg.get("stance_ratio", {"Support":0.0,"Refute":0.0,"Neutral":1.0}) if first_agg else {"Support":0.0,"Refute":0.0,"Neutral":1.0}
-    return md_text, stance_ratio
+
+    return {
+        "md": "\n".join(blocks),
+        "ratio": final_ratio,
+        "best_evidence": final_best_evidence,
+        "verdict": final_verdict,
+        "confidence": final_confidence
+    }
 
 # ----------------- Visualization -----------------
 def render_stance_chart(ratio: dict) -> go.Figure:
@@ -394,53 +424,80 @@ def strip_html(text: str) -> str:
     text = text.replace("&nbsp;", " ").replace("&quot;", '"')
     return text.strip()
 
-def render_result_card(md_text: str, stance_ratio: dict, claim_text: str, best_evidence: dict = None):
-    # parse best evidence fields
-    src_link = best_evidence.get("link","") if best_evidence else ""
+def render_result_card(
+    md_text: str,
+    stance_ratio: dict,
+    claim_text: str,
+    best_evidence: dict,
+    verdict: str,
+    confidence: float
+):
+    # --- PARSE EVIDENCE ---
+    src_link = best_evidence.get("link", "") if best_evidence else ""
     src_snip = strip_html(
-        best_evidence.get("snippet") 
-        or best_evidence.get("text") 
+        best_evidence.get("snippet")
+        or best_evidence.get("text")
         or ""
     )
     src_domain = tldextract.extract(src_link).domain if src_link else "N/A"
-    agg = aggregate_verdict([best_evidence]) if best_evidence else {"verdict":"Unknown","confidence":0.0,"stance_ratio":{"Support":0.0,"Refute":0.0,"Neutral":1.0}}
-    # compute values for visuals: use stance_ratio & confidence from agg when available
-    confidence_pct = int(round(agg.get("confidence", 0.0) * 100))
-    # fallback stance_ratio normalized
-    s = stance_ratio.get("Support",0.0)*100
-    ref = stance_ratio.get("Refute",0.0)*100
-    neu = stance_ratio.get("Neutral",0.0)*100
 
-    # Verdict badge mapping
-    verdict_display = {"True":("Supported","badge-supported"), "False":("Refuted","badge-refuted"), "Unknown":("Unproven","badge-unknown")}
-    v_label, v_class = verdict_display.get(agg.get("verdict","Unknown"), ("Unproven","badge-unknown"))
+    # --- CONFIDENCE ---
+    confidence_pct = int(round(confidence * 100))
 
+    # --- STANCE ---
+    s = stance_ratio.get("Support", 0.0) * 100
+    ref = stance_ratio.get("Refute", 0.0) * 100
+    neu = stance_ratio.get("Neutral", 0.0) * 100
+
+    # --- VERDICT BADGE ---
+    verdict_display = {
+        "True": ("Supported", "badge-supported"),
+        "False": ("Refuted", "badge-refuted"),
+        "Unknown": ("Unproven", "badge-unknown")
+    }
+    v_label, v_class = verdict_display.get(verdict, ("Unproven", "badge-unknown"))
+
+    # --- RENDER HTML ---
     st.markdown(f"""
     <div class="result-card">
+
+      <!-- VERDICT + CONFIDENCE -->
       <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; margin-bottom:18px;">
+        
+        <!-- VERDICT -->
         <div style="flex:1">
           <div class="label-small">KẾT LUẬN (VERDICT)</div>
-          <div style="margin-top:8px;"><span class="badge {v_class}">{v_label}</span></div>
+          <div style="margin-top:8px;">
+            <span class="badge {v_class}">{v_label}</span>
+          </div>
         </div>
+
+        <!-- CONFIDENCE -->
         <div style="width:45%; text-align:right;">
           <div class="label-small">ĐỘ TIN CẬY AI (CONFIDENCE)</div>
           <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:8px;">
             <div style="flex:1; margin-right:8px;">
-              <div class="conf-container"><div class="conf-fill" style="width:{confidence_pct}%;"></div></div>
+              <div class="conf-container">
+                <div class="conf-fill" style="width:{confidence_pct}%;"></div>
+              </div>
             </div>
             <div style="min-width:48px; font-weight:700;">{confidence_pct}%</div>
           </div>
         </div>
       </div>
 
+
+      <!-- STANCE RATIO -->
       <div style="margin-bottom:18px;">
         <div class="label-small">TỈ LỆ QUAN ĐIỂM (STANCE RATIO)</div>
+
         <div style="margin-top:8px;">
           <div class="stance-container">
             <div class="st-sup" style="width:{max(0,min(100,s))}%;"></div>
             <div class="st-ref" style="width:{max(0,min(100,ref))}%;"></div>
             <div class="st-neu" style="width:{max(0,min(100,neu))}%;"></div>
           </div>
+
           <div style="display:flex; justify-content:space-between; color:#9aa6b2; font-size:13px; margin-top:8px;">
             <div style="color:#2ecc71;">● Supporting: {int(round(s))}%</div>
             <div style="color:#ff6b6b;">● Refuting: {int(round(ref))}%</div>
@@ -449,11 +506,17 @@ def render_result_card(md_text: str, stance_ratio: dict, claim_text: str, best_e
         </div>
       </div>
 
+
+      <!-- BEST EVIDENCE -->
       <div style="border-top:1px solid #232936; padding-top:14px;">
-        <div style="font-weight:700; color:#d8e9ff; margin-bottom:10px;">Bằng chứng mạnh nhất (Strongest Evidence)</div>
+        <div style="font-weight:700; color:#d8e9ff; margin-bottom:10px;">
+          Bằng chứng mạnh nhất (Strongest Evidence)
+        </div>
 
         <div class="label-small">NGUỒN (SOURCE)</div>
-        <div style="margin-bottom:10px;">🌐 <a href="{src_link}" target="_blank" style="color:#8fcfff;"><b>{src_domain}</b></a></div>
+        <div style="margin-bottom:10px;">
+            🌐 <a href="{src_link}" target="_blank" style="color:#8fcfff;"><b>{src_domain}</b></a>
+        </div>
 
         <div class="label-small">TRÍCH DẪN (CONTENT)</div>
         <div class="evidence-box">"{src_snip}"</div>
@@ -487,27 +550,21 @@ if send and txt.strip():
 
         with st.spinner("Đang phân tích và tìm bằng chứng... (có thể mất vài giây)"):
 
-            # 1) chạy pipeline trước
+            # chạy pipeline trước
             try:
-                md, ratio = fact_check_full(txt)
+                result = fact_check_full(txt)
+                md = result["md"]
+                ratio = result["ratio"]
+                best_ev = result["best_evidence"]
+                verdict = result["verdict"]
+                confidence = result["confidence"]
             except Exception as e:
                 st.error("Lỗi khi chạy pipeline: " + str(e))
                 md, ratio = "Lỗi nội bộ khi kiểm chứng.", {
                     "Support":0.0,"Refute":0.0,"Neutral":1.0
                 }
 
-            # 2) tìm bằng chứng mạnh nhất
-            first_claims = extract_claims(preprocess_text(txt))
-            best_ev = None
-            if first_claims:
-                try:
-                    docs = process_claim(first_claims[0])
-                    if docs:
-                        best_ev = docs[0]
-                except Exception:
-                    best_ev = None
-
-            # 3) LƯU LỊCH SỬ Ở ĐÂY — SAU KHI md, ratio, best_ev đã có
+            # LƯU LỊCH SỬ Ở ĐÂY — SAU KHI md, ratio, best_ev đã có
             st.session_state["history"].append({
                 "question": txt.strip(),
                 "result_md": md,
@@ -515,7 +572,7 @@ if send and txt.strip():
                 "best_ev": best_ev
             })
 
-            # 4) render card hiện tại
+            # render card hiện tại
             left, right = st.columns([7,3])
             with left:
                 render_result_card(md, ratio, txt, best_ev)
@@ -524,7 +581,7 @@ if send and txt.strip():
 
             with right:
                 fig = render_stance_chart(ratio)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key="main_chart")
 
         st.markdown("---")
 
@@ -556,7 +613,7 @@ if st.session_state["history"]:
             )
         with right:
             fig = render_stance_chart(item["stance_ratio"])
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key=f"history_chart_{item['question']}_{len(st.session_state['history'])}")
 
         st.markdown("---")
         
