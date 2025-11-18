@@ -480,52 +480,53 @@ with st.form("claim_form", clear_on_submit=False):
 
 # on-send: run pipeline
 if send and txt.strip():
-    st.session_state["history"].append({
-        "question": txt.strip(),
-        "result_md": md,
-        "stance_ratio": ratio,
-        "best_ev": best_ev
-    })
-    st.markdown(f'<div class="user-bubble">👤 "{strip_html(txt)}"</div>', unsafe_allow_html=True)
-    st.write("")  # spacing
+    if send and txt.strip():
 
-    with st.spinner("Đang phân tích và tìm bằng chứng... (có thể mất vài giây)"):
-        try:
-            md, ratio = fact_check_full(txt)
-        except Exception as e:
-            st.error("Lỗi khi chạy pipeline: " + str(e))
-            md, ratio = "Lỗi nội bộ khi kiểm chứng.", {"Support":0.0,"Refute":0.0,"Neutral":1.0}
+        st.markdown(f'<div class="user-bubble">👤 "{strip_html(txt)}"</div>', unsafe_allow_html=True)
+        st.write("")
 
-        # get best evidence from process_claim (for rendering detailed card)
-        # We'll call process_claim once for the first detected claim to retrieve best evidence list
-        first_claims = extract_claims(preprocess_text(txt))
-        best_ev = None
-        if first_claims:
+        with st.spinner("Đang phân tích và tìm bằng chứng... (có thể mất vài giây)"):
+
+            # 1) chạy pipeline trước
             try:
-                docs = process_claim(first_claims[0])
-                if docs:
-                    # docs already have trust_score; pick best
-                    best_ev = docs[0]
-                else:
+                md, ratio = fact_check_full(txt)
+            except Exception as e:
+                st.error("Lỗi khi chạy pipeline: " + str(e))
+                md, ratio = "Lỗi nội bộ khi kiểm chứng.", {
+                    "Support":0.0,"Refute":0.0,"Neutral":1.0
+                }
+
+            # 2) tìm bằng chứng mạnh nhất
+            first_claims = extract_claims(preprocess_text(txt))
+            best_ev = None
+            if first_claims:
+                try:
+                    docs = process_claim(first_claims[0])
+                    if docs:
+                        best_ev = docs[0]
+                except Exception:
                     best_ev = None
-            except Exception:
-                best_ev = None
 
-        # render card + chart side-by-side
-        left, right = st.columns([7,3])
-        with left:
-            # parse md to show details too
-            render_result_card(md, ratio, txt, best_ev)
-            st.markdown("")  # spacing
-            # optional raw markdown summary (collapsible)
-            with st.expander("Xem chi tiết kết quả (markdown)"):
-                st.markdown(md)
-        with right:
-            fig = render_stance_chart(ratio)
-            st.plotly_chart(fig, use_container_width=True)
+            # 3) LƯU LỊCH SỬ Ở ĐÂY — SAU KHI md, ratio, best_ev đã có
+            st.session_state["history"].append({
+                "question": txt.strip(),
+                "result_md": md,
+                "stance_ratio": ratio,
+                "best_ev": best_ev
+            })
 
-    st.markdown("---")
-    st.caption("Powered by your local pipeline — SBERT + XNLI + Serper/LLM (if configured).")
+            # 4) render card hiện tại
+            left, right = st.columns([7,3])
+            with left:
+                render_result_card(md, ratio, txt, best_ev)
+                with st.expander("Xem chi tiết kết quả (markdown)"):
+                    st.markdown(md)
+
+            with right:
+                fig = render_stance_chart(ratio)
+                st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("---")
 
 else:
     # initial welcome card
