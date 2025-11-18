@@ -569,13 +569,15 @@ if send and txt.strip():
                 "question": txt.strip(),
                 "result_md": md,
                 "stance_ratio": ratio,
-                "best_ev": best_ev
+                "best_ev": best_ev,
+                "verdict": verdict,
+                "confidence": confidence
             })
 
             # render card hiện tại
             left, right = st.columns([7,3])
             with left:
-                render_result_card(md, ratio, txt, best_ev)
+                render_result_card(md, ratio, txt, best_ev, verdict, confidence)
                 with st.expander("Xem chi tiết kết quả (markdown)"):
                     st.markdown(md)
 
@@ -609,7 +611,9 @@ if st.session_state["history"]:
                 item["result_md"],
                 item["stance_ratio"],
                 item["question"],
-                item["best_ev"]
+                item["best_ev"],
+                item["verdict"],
+                item["confidence"]
             )
         with right:
             fig = render_stance_chart(item["stance_ratio"])
