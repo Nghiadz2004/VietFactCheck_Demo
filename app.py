@@ -397,7 +397,11 @@ def strip_html(text: str) -> str:
 def render_result_card(md_text: str, stance_ratio: dict, claim_text: str, best_evidence: dict = None):
     # parse best evidence fields
     src_link = best_evidence.get("link","") if best_evidence else ""
-    src_snip = strip_html(best_evidence.get("text","")) if best_evidence else ""
+    src_snip = strip_html(
+        best_evidence.get("snippet") 
+        or best_evidence.get("text") 
+        or ""
+    )
     src_domain = tldextract.extract(src_link).domain if src_link else "N/A"
     agg = aggregate_verdict([best_evidence]) if best_evidence else {"verdict":"Unknown","confidence":0.0,"stance_ratio":{"Support":0.0,"Refute":0.0,"Neutral":1.0}}
     # compute values for visuals: use stance_ratio & confidence from agg when available
@@ -476,7 +480,12 @@ with st.form("claim_form", clear_on_submit=False):
 
 # on-send: run pipeline
 if send and txt.strip():
-    st.session_state["history"].append(txt.strip())
+    st.session_state["history"].append({
+        "question": txt.strip(),
+        "result_md": md,
+        "stance_ratio": ratio,
+        "best_ev": best_ev
+    })
     st.markdown(f'<div class="user-bubble">👤 "{strip_html(txt)}"</div>', unsafe_allow_html=True)
     st.write("")  # spacing
 
@@ -531,8 +540,23 @@ else:
     st.write("")
 
 if st.session_state["history"]:
-    st.markdown("### 🕓 Lịch sử câu hỏi")
-    for i, item in enumerate(st.session_state["history"][::-1], start=1):
-        st.markdown(f"- **{item}**")
+    st.markdown("## 💬 Lịch sử trò chuyện")
+
+    for item in st.session_state["history"]:
+        st.markdown(f'<div class="user-bubble">👤 "{strip_html(item["question"])}"</div>', unsafe_allow_html=True)
+        
+        left, right = st.columns([7,3])
+        with left:
+            render_result_card(
+                item["result_md"],
+                item["stance_ratio"],
+                item["question"],
+                item["best_ev"]
+            )
+        with right:
+            fig = render_stance_chart(item["stance_ratio"])
+            st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("---")
         
 # ----------------- END -----------------
