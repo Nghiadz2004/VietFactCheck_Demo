@@ -17,6 +17,8 @@ import plotly.graph_objects as go
 
 # ----------------- CONFIG -----------------
 st.set_page_config(page_title="VietFactCheck Pro", layout="wide", page_icon="🛡️")
+if "history" not in st.session_state:
+    st.session_state["history"] = []
 
 # CSS: dark mode + card styles (tune as needed)
 st.markdown(
@@ -385,10 +387,17 @@ def render_stance_chart(ratio: dict) -> go.Figure:
 
 
 # ----------------- STREAMLIT UI -----------------
+def strip_html(text: str) -> str:
+    if not text:
+        return ""
+    text = re.sub(r"<[^>]+>", "", text)
+    text = text.replace("&nbsp;", " ").replace("&quot;", '"')
+    return text.strip()
+
 def render_result_card(md_text: str, stance_ratio: dict, claim_text: str, best_evidence: dict = None):
     # parse best evidence fields
     src_link = best_evidence.get("link","") if best_evidence else ""
-    src_snip = best_evidence.get("text","") if best_evidence else ""
+    src_snip = strip_html(best_evidence.get("text","")) if best_evidence else ""
     src_domain = tldextract.extract(src_link).domain if src_link else "N/A"
     agg = aggregate_verdict([best_evidence]) if best_evidence else {"verdict":"Unknown","confidence":0.0,"stance_ratio":{"Support":0.0,"Refute":0.0,"Neutral":1.0}}
     # compute values for visuals: use stance_ratio & confidence from agg when available
@@ -443,7 +452,7 @@ def render_result_card(md_text: str, stance_ratio: dict, claim_text: str, best_e
         <div style="margin-bottom:10px;">🌐 <a href="{src_link}" target="_blank" style="color:#8fcfff;"><b>{src_domain}</b></a></div>
 
         <div class="label-small">TRÍCH DẪN (CONTENT)</div>
-        <div class="evidence-box">"{_clean_text(src_snip)}"</div>
+        <div class="evidence-box">"{src_snip}"</div>
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -454,15 +463,21 @@ st.markdown("Enter a statement, news headline, or claim to analyze its validity.
 st.markdown("---")
 
 # Input row: text input + send button
-col1, col2 = st.columns([10,1])
-with col1:
-    txt = st.text_area("Nhập claim cần kiểm chứng...", height=90, placeholder="Ví dụ: Việt Nam sẽ cấm hoàn toàn việc sử dụng tiền mặt trong vòng 5 năm tới.")
-with col2:
-    send = st.button("➤", key="send_btn", help="Gửi để kiểm chứng")
+with st.form("claim_form", clear_on_submit=False):
+    col1, col2 = st.columns([10,1])
+    with col1:
+        txt = st.text_area(
+            "Nhập claim cần kiểm chứng...",
+            height=90,
+            placeholder="Ví dụ: Việt Nam sẽ cấm hoàn toàn việc sử dụng tiền mặt..."
+        )
+    with col2:
+        send = st.form_submit_button("➤", help="Gửi để kiểm chứng")
 
 # on-send: run pipeline
 if send and txt.strip():
-    st.markdown(f'<div class="user-bubble">👤 "{_clean_text(txt)}"</div>', unsafe_allow_html=True)
+    st.session_state["history"].append(txt.strip())
+    st.markdown(f'<div class="user-bubble">👤 "{strip_html(txt)}"</div>', unsafe_allow_html=True)
     st.write("")  # spacing
 
     with st.spinner("Đang phân tích và tìm bằng chứng... (có thể mất vài giây)"):
@@ -515,4 +530,9 @@ else:
     )
     st.write("")
 
+if st.session_state["history"]:
+    st.markdown("### 🕓 Lịch sử câu hỏi")
+    for i, item in enumerate(st.session_state["history"][::-1], start=1):
+        st.markdown(f"- **{item}**")
+        
 # ----------------- END -----------------
