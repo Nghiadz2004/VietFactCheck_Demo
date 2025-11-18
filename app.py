@@ -6,15 +6,42 @@ import time
 import torch
 import requests
 import tldextract
-import gradio as gr
+import streamlit as st
 from datetime import datetime
 from typing import List, Tuple, Dict
-from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from sentence_transformers import SentenceTransformer, util
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from dotenv import load_dotenv
 import plotly.graph_objects as go
+
+# ----------------- CONFIG -----------------
+st.set_page_config(page_title="VietFactCheck Pro", layout="wide", page_icon="🛡️")
+
+# CSS: dark mode + card styles (tune as needed)
+st.markdown(
+    """
+    <style>
+    .stApp { background-color: #0f1620; color: #e6eef6; font-family: Inter, sans-serif; }
+    header {visibility: hidden;}
+    .result-card { background-color: #141821; border: 1px solid #232936; border-radius: 14px; padding: 22px; }
+    .user-bubble { background: linear-gradient(90deg,#1e88e5,#1976d2); color: white; padding:14px 18px; border-radius: 12px; display:inline-block; font-weight:600; }
+    .label-small { color:#9aa6b2; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; }
+    .evidence-box { background:#0e1620; border-left:4px solid #1e88e5; padding:14px; border-radius:8px; color:#cfe7ff; font-style:italic; }
+    .badge { padding:6px 14px; border-radius:20px; font-weight:700; font-size:13px; display:inline-block; }
+    .badge-supported { background:#e8f6ec; color:#1b5e20; border:1px solid #1b5e20; }
+    .badge-refuted { background:#fdecea; color:#7b1e1e; border:1px solid #7b1e1e; }
+    .badge-unknown { background:#2a2f36; color:#cdd6df; border:1px solid #3a4149; }
+    .conf-container { width:100%; background:#1b2230; height:10px; border-radius:6px; overflow:hidden; }
+    .conf-fill { height:100%; background:linear-gradient(90deg,#1e88e5,#42a5f5); }
+    .stance-container { display:flex; height:12px; width:100%; border-radius:6px; overflow:hidden; background:#121519; }
+    .st-sup { background:#29b06f; }
+    .st-ref { background:#ff6b6b; }
+    .st-neu { background:#7a7f86; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ============= Load ENV =============
 load_dotenv()
@@ -35,11 +62,16 @@ client = ChatCompletionsClient(
 )
 
 # ============= Load SBERT + NLI model =============
-embedder = SentenceTransformer("keepitreal/vietnamese-sbert")
+@st.cache_resource 
+def load_models():
+    embedder = SentenceTransformer("keepitreal/vietnamese-sbert")
+    stance_model_name = "joeddav/xlm-roberta-large-xnli"
+    tokenizer = AutoTokenizer.from_pretrained(stance_model_name, use_fast=False)
+    stance_model = AutoModelForSequenceClassification.from_pretrained(stance_model_name)
+    return embedder, tokenizer, stance_model
 
-stance_model_name = "joeddav/xlm-roberta-large-xnli"
-tokenizer = AutoTokenizer.from_pretrained(stance_model_name, use_fast=False)
-stance_model = AutoModelForSequenceClassification.from_pretrained(stance_model_name)
+# Gọi hàm load
+embedder, tokenizer, stance_model = load_models()
 
 TRUSTED_DOMAINS = [
     "vnexpress.net", "tuoitre.vn", "thanhnien.vn", "nhandan.vn",
@@ -303,289 +335,184 @@ def aggregate_verdict(evidences):
     return {"verdict": verdict, "confidence": confidence, "stance_ratio": ratio}
 
 # ============= FULL FACT CHECK PIPELINE (returns markdown + stance ratio) ============
-def fact_check_full(text):
+def fact_check_full(text: str):
     processed = preprocess_text(text)
     claims = extract_claims(processed)
     if not claims:
-        md = "Không tìm thấy câu chứa claim có thể kiểm chứng."
-        # return md + empty chart
-        return md, {"Support":0.0,"Refute":0.0,"Neutral":1.0}
-
-    all_blocks = []
-    # We'll generate chart for the first claim's aggregation (if multiple claims)
-    first_agg = None
-
+        return "Không tìm thấy claim có thể kiểm chứng.", {"Support":0.0,"Refute":0.0,"Neutral":1.0}
+    blocks=[]
+    first_agg=None
     for claim in claims:
         docs = process_claim(claim)
-        evidences = []
+        evidences=[]
         for d in docs:
-            snippet = d.get("snippet", "") or ""
-            link = d.get("link", "") or ""
-            trust = d.get("trust_score", 0) or 0
+            snippet = d.get("snippet","") or ""
+            link = d.get("link","") or ""
+            trust = d.get("trust_score", 0.0) or 0.0
             stance = predict_stance(claim, snippet)
-            evidences.append({
-                "text": snippet,
-                "link": link,
-                "stance_scores": stance,
-                "trust_score": trust
-            })
-
+            evidences.append({"text": snippet, "link": link, "stance_scores": stance, "trust_score": trust})
         if not evidences:
-            all_blocks.append(f"\n### Claim: **{claim}**\nKhông tìm được bằng chứng.\n")
+            blocks.append(f"### Claim: **{claim}**\nKhông tìm được bằng chứng.\n")
             continue
-
-        best_evidence = max(evidences, key=lambda e: e.get("trust_score", 0))
+        best = max(evidences, key=lambda e: e.get("trust_score",0))
         agg = aggregate_verdict(evidences)
         if first_agg is None:
             first_agg = agg
-
-        block = f"""
-### Claim: **{claim}**
-Kết luận: **{agg['verdict']}** (độ tin cậy: {agg['confidence']:.2f})  
-Stance ratio: {agg['stance_ratio']}
-
-**Bằng chứng mạnh nhất:**
-- Nguồn: {best_evidence.get('link','(no link)')}
-- Nội dung: {best_evidence.get('text','')[:450]}...
-"""
-        all_blocks.append(block)
-
-    md_text = "\n".join(all_blocks)
-    if first_agg is None:
-        stance_ratio = {"Support":0.0,"Refute":0.0,"Neutral":1.0}
-    else:
-        stance_ratio = first_agg.get("stance_ratio", {"Support":0.0,"Refute":0.0,"Neutral":1.0})
+        block = (
+            f"### Claim: **{claim}**\n"
+            f"Kết luận: **{agg['verdict']}** (độ tin cậy: {agg['confidence']:.2f})  \n"
+            f"Stance ratio: {agg['stance_ratio']}\n\n"
+            f"**Bằng chứng mạnh nhất:**  \n- Nguồn: {best.get('link','(no link)')}  \n"
+            f"- Nội dung: {best.get('text','')[:600]}...\n"
+        )
+        blocks.append(block)
+    md_text = "\n".join(blocks)
+    stance_ratio = first_agg.get("stance_ratio", {"Support":0.0,"Refute":0.0,"Neutral":1.0}) if first_agg else {"Support":0.0,"Refute":0.0,"Neutral":1.0}
     return md_text, stance_ratio
 
-# ============= Visualization: Plotly pie chart ============
-def render_stance_chart(ratio):
-    # ensure numeric and normalized
-    s = float(ratio.get("Support", 0.0))
-    n = float(ratio.get("Neutral", 0.0))
-    r = float(ratio.get("Refute", 0.0))
-    total = s + n + r
-    if total == 0:
-        vals = [0.0, 1.0, 0.0]
-    else:
-        vals = [s/total, n/total, r/total]
-
+# ----------------- Visualization -----------------
+def render_stance_chart(ratio: dict) -> go.Figure:
+    s = float(ratio.get("Support",0.0))
+    n = float(ratio.get("Neutral",0.0))
+    r = float(ratio.get("Refute",0.0))
+    total = max(s + n + r, 1e-9)
+    vals = [s/total, n/total, r/total]
     labels = ["Ủng hộ (Support)", "Trung lập (Neutral)", "Phản bác (Refute)"]
     colors = ["#2ECC71", "#9E9E9E", "#FF6B6B"]
-
-    fig = go.Figure(
-        go.Pie(
-            labels=labels,
-            values=vals,
-            marker=dict(colors=colors, line=dict(color="white", width=2)),
-            hole=0.45,
-            sort=False,
-            textinfo="label+percent"
-        )
-    )
-    fig.update_layout(
-        margin=dict(t=10, b=10, l=10, r=10),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", yanchor="bottom", y=-0.05, xanchor="center", x=0.5)
-    )
+    fig = go.Figure(go.Pie(labels=labels, values=vals, hole=0.45, marker=dict(colors=colors, line=dict(color='rgba(0,0,0,0)', width=0)), textinfo='percent+label'))
+    fig.update_layout(margin=dict(t=8,b=8,l=8,r=8), paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation='h',y=-0.05))
     return fig
 
-# ============= Gradio UI =============
-def verify_fn(claim: str):
-    claim = (claim or "").strip()
-    if not claim:
-        return (
-            gr.update(value="", visible=False),
-            gr.update(visible=False),
-            gr.update(visible=False),
-            "",
-            ""
-        )
 
-    md, stance_ratio = fact_check_full(claim)
-    fig = render_stance_chart(stance_ratio)
+# ----------------- STREAMLIT UI -----------------
+def render_result_card(md_text: str, stance_ratio: dict, claim_text: str, best_evidence: dict = None):
+    # parse best evidence fields
+    src_link = best_evidence.get("link","") if best_evidence else ""
+    src_snip = best_evidence.get("text","") if best_evidence else ""
+    src_domain = tldextract.extract(src_link).domain if src_link else "N/A"
+    agg = aggregate_verdict([best_evidence]) if best_evidence else {"verdict":"Unknown","confidence":0.0,"stance_ratio":{"Support":0.0,"Refute":0.0,"Neutral":1.0}}
+    # compute values for visuals: use stance_ratio & confidence from agg when available
+    confidence_pct = int(round(agg.get("confidence", 0.0) * 100))
+    # fallback stance_ratio normalized
+    s = stance_ratio.get("Support",0.0)*100
+    ref = stance_ratio.get("Refute",0.0)*100
+    neu = stance_ratio.get("Neutral",0.0)*100
 
-    support = stance_ratio.get("Support", 0)
-    refute = stance_ratio.get("Refute", 0)
-    neutral = stance_ratio.get("Neutral", 0)
+    # Verdict badge mapping
+    verdict_display = {"True":("Supported","badge-supported"), "False":("Refuted","badge-refuted"), "Unknown":("Unproven","badge-unknown")}
+    v_label, v_class = verdict_display.get(agg.get("verdict","Unknown"), ("Unproven","badge-unknown"))
 
-    # ---------- Badge Verdict ----------
-    verdict_text = md.split("Kết luận:")[1].split("(")[0].strip()
-    if verdict_text == "True":
-        verdict_badge = '<div class="badge badge-true">Supported</div>'
-    elif verdict_text == "False":
-        verdict_badge = '<div class="badge badge-false">Refuted</div>'
-    else:
-        verdict_badge = '<div class="badge badge-unknown">Unknown</div>'
-
-    # ---------- Confidence bar ----------
-    conf = int(float(md.split("độ tin cậy:")[1].split(")")[0].strip()) * 100)
-    conf_bar = f"""
-        <div class="conf-box">
-            <div class="conf-label">ĐỘ TIN CẬY (CONFIDENCE)</div>
-            <div class="conf-bar-bg">
-                <div class="conf-bar-fill" style="width:{conf}%"></div>
+    st.markdown(f"""
+    <div class="result-card">
+      <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; margin-bottom:18px;">
+        <div style="flex:1">
+          <div class="label-small">KẾT LUẬN (VERDICT)</div>
+          <div style="margin-top:8px;"><span class="badge {v_class}">{v_label}</span></div>
+        </div>
+        <div style="width:45%; text-align:right;">
+          <div class="label-small">ĐỘ TIN CẬY AI (CONFIDENCE)</div>
+          <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:8px;">
+            <div style="flex:1; margin-right:8px;">
+              <div class="conf-container"><div class="conf-fill" style="width:{confidence_pct}%;"></div></div>
             </div>
-            <div class="conf-num">{conf}%</div>
+            <div style="min-width:48px; font-weight:700;">{confidence_pct}%</div>
+          </div>
         </div>
-    """
+      </div>
 
-    # ---------- Stance Ratio bar ----------
-    stance_bar = f"""
-    <div class="stance-box">
-        <div class="stance-title">STANCE RATIO</div>
-        <div class="stance-bar">
-            <div class="sb sb-support" style="width:{support*100}%"></div>
-            <div class="sb sb-refute" style="width:{refute*100}%"></div>
-            <div class="sb sb-neutral" style="width:{neutral*100}%"></div>
+      <div style="margin-bottom:18px;">
+        <div class="label-small">TỈ LỆ QUAN ĐIỂM (STANCE RATIO)</div>
+        <div style="margin-top:8px;">
+          <div class="stance-container">
+            <div class="st-sup" style="width:{max(0,min(100,s))}%;"></div>
+            <div class="st-ref" style="width:{max(0,min(100,ref))}%;"></div>
+            <div class="st-neu" style="width:{max(0,min(100,neu))}%;"></div>
+          </div>
+          <div style="display:flex; justify-content:space-between; color:#9aa6b2; font-size:13px; margin-top:8px;">
+            <div style="color:#2ecc71;">● Supporting: {int(round(s))}%</div>
+            <div style="color:#ff6b6b;">● Refuting: {int(round(ref))}%</div>
+            <div style="color:#7a7f86;">● Neutral: {int(round(neu))}%</div>
+          </div>
         </div>
-        <div class="stance-legend">
-            <span class="lg green">Supporting: {support*100:.0f}%</span>
-            <span class="lg red">Refuting: {refute*100:.0f}%</span>
-            <span class="lg grey">Neutral: {neutral*100:.0f}%</span>
-        </div>
+      </div>
+
+      <div style="border-top:1px solid #232936; padding-top:14px;">
+        <div style="font-weight:700; color:#d8e9ff; margin-bottom:10px;">Bằng chứng mạnh nhất (Strongest Evidence)</div>
+
+        <div class="label-small">NGUỒN (SOURCE)</div>
+        <div style="margin-bottom:10px;">🌐 <a href="{src_link}" target="_blank" style="color:#8fcfff;"><b>{src_domain}</b></a></div>
+
+        <div class="label-small">TRÍCH DẪN (CONTENT)</div>
+        <div class="evidence-box">"{_clean_text(src_snip)}"</div>
+      </div>
     </div>
-    """
+    """, unsafe_allow_html=True)
 
-    # ---------- Extract best evidence ----------
-    try:
-        best_block = md.split("**Bằng chứng mạnh nhất:**")[1]
-        src_link = best_block.split("- Nguồn:")[1].split("\n")[0].strip()
-        src_snip = best_block.split("- Nội dung:")[1].strip()
-    except:
-        src_link = "(không link)"
-        src_snip = "Không tìm thấy nội dung."
+# ----------------- APP LAYOUT -----------------
+st.title("🔎 Verify a Claim")
+st.markdown("Enter a statement, news headline, or claim to analyze its validity.")
+st.markdown("---")
 
-    evidence_html = f"""
-    <div class="evidence-box">
-        <div class="ev-title">Bằng chứng mạnh nhất (Strongest Evidence)</div>
-        <div class="ev-subtitle">NGUỒN (SOURCE)</div>
-        <div class="ev-link"><a href="{src_link}" target="_blank">{src_link}</a></div>
+# Input row: text input + send button
+col1, col2 = st.columns([10,1])
+with col1:
+    txt = st.text_area("Nhập claim cần kiểm chứng...", height=90, placeholder="Ví dụ: Việt Nam sẽ cấm hoàn toàn việc sử dụng tiền mặt trong vòng 5 năm tới.")
+with col2:
+    send = st.button("➤", key="send_btn", help="Gửi để kiểm chứng")
 
-        <div class="ev-subtitle">NỘI DUNG (CONTENT)</div>
-        <div class="ev-snippet">"{src_snip}"</div>
-    </div>
-    """
+# on-send: run pipeline
+if send and txt.strip():
+    st.markdown(f'<div class="user-bubble">👤 "{_clean_text(txt)}"</div>', unsafe_allow_html=True)
+    st.write("")  # spacing
 
-    return (
-        gr.update(value=f'<div class="claim-box">"{claim}"</div>', visible=True),
-        gr.update(value=verdict_badge, visible=True),
-        fig,
-        stance_bar,
-        evidence_html
-    )
+    with st.spinner("Đang phân tích và tìm bằng chứng... (có thể mất vài giây)"):
+        try:
+            md, ratio = fact_check_full(txt)
+        except Exception as e:
+            st.error("Lỗi khi chạy pipeline: " + str(e))
+            md, ratio = "Lỗi nội bộ khi kiểm chứng.", {"Support":0.0,"Refute":0.0,"Neutral":1.0}
 
+        # get best evidence from process_claim (for rendering detailed card)
+        # We'll call process_claim once for the first detected claim to retrieve best evidence list
+        first_claims = extract_claims(preprocess_text(txt))
+        best_ev = None
+        if first_claims:
+            try:
+                docs = process_claim(first_claims[0])
+                if docs:
+                    # docs already have trust_score; pick best
+                    best_ev = docs[0]
+                else:
+                    best_ev = None
+            except Exception:
+                best_ev = None
 
-with gr.Blocks(
-    title="VN Claim Verifier",
-    css="""
-    body {
-        background-color: #f3f4f6;
-        font-family: Inter, sans-serif;
-    }
+        # render card + chart side-by-side
+        left, right = st.columns([7,3])
+        with left:
+            # parse md to show details too
+            render_result_card(md, ratio, txt, best_ev)
+            st.markdown("")  # spacing
+            # optional raw markdown summary (collapsible)
+            with st.expander("Xem chi tiết kết quả (markdown)"):
+                st.markdown(md)
+        with right:
+            fig = render_stance_chart(ratio)
+            st.plotly_chart(fig, use_container_width=True)
 
-    .claim-box {
-        background:#1E63E9;
-        padding:18px;
-        border-radius:12px;
-        color:white;
-        font-size:18px;
-        margin-bottom:12px;
-    }
+    st.markdown("---")
+    st.caption("Powered by your local pipeline — SBERT + XNLI + Serper/LLM (if configured).")
 
-    .badge {
-        padding:6px 14px;
-        border-radius:10px;
-        color:white;
-        display:inline-block;
-        font-size:14px;
-        margin-bottom:6px;
-    }
-    .badge-true { background:#28A745; }
-    .badge-false { background:#C62828; }
-    .badge-unknown { background:#757575; }
-
-    /* Confidence Bar */
-    .conf-box { margin:16px 0; }
-    .conf-label { font-size:13px; margin-bottom:6px; color:#444; }
-    .conf-bar-bg {
-        width:100%; height:10px;
-        background:#d7d7d7; border-radius:8px;
-        position:relative;
-    }
-    .conf-bar-fill {
-        height:10px;
-        background:#1E63E9;
-        border-radius:8px;
-    }
-    .conf-num { text-align:right; font-size:14px; font-weight:600; margin-top:4px; }
-
-    /* Stance Bar */
-    .stance-title { font-weight:600; margin-bottom:8px; }
-    .stance-bar { height:16px; display:flex; width:100%; border-radius:8px; overflow:hidden; }
-    .sb-support { background:#2ecc71; }
-    .sb-refute { background:#ff5252; }
-    .sb-neutral { background:#bdbdbd; }
-    .stance-legend { margin-top:6px; font-size:13px; color:#555; }
-    .stance-legend .lg { margin-right:14px; }
-    .lg.green { color:#2ecc71; }
-    .lg.red { color:#ff5252; }
-    .lg.grey { color:#757575; }
-
-    /* Evidence box */
-    .evidence-box {
-        background:white;
-        padding:20px;
-        border-radius:12px;
-        margin-top:20px;
-        box-shadow:0px 0px 12px rgba(0,0,0,0.05);
-    }
-    .ev-title { font-weight:700; margin-bottom:10px; }
-    .ev-subtitle { font-size:12px; color:#666; margin-bottom:4px; margin-top:12px; }
-    .ev-link a { color:#1E63E9; font-weight:600; text-decoration:none; }
-    .ev-snippet {
-        background:#eef3ff;
-        padding:12px;
-        border-radius:8px;
-        color:#333;
-        margin-top:6px;
-        font-style:italic;
-    }
-    """
-) as ui:
-
-    gr.Markdown(
+else:
+    # initial welcome card
+    st.markdown(
         """
-        # <span style='color:#1E63E9'>Verify a Claim</span>
-        Enter a statement, news headline, or claim to analyze its validity.
-        """,
+        <div class="result-card">
+            <div style="font-weight:700; font-size:18px; margin-bottom:8px;">🌟 Chào bạn — VietFactCheck Pro</div>
+            <div style="color:#9aa6b2;">Nhập một tuyên bố (claim) hoặc tiêu đề tin tức bên trên để kiểm chứng. Hệ thống sẽ tìm kiếm, phân tích stance và đưa ra kết luận cùng bằng chứng mạnh nhất.</div>
+        </div>
+        """, unsafe_allow_html=True
     )
+    st.write("")
 
-    with gr.Row():
-        claim_box = gr.Textbox(
-            placeholder="Enter a new statement to verify...",
-            lines=1,
-            scale=10
-        )
-        send_btn = gr.Button("➤", elem_id="send-btn", scale=1)
-
-    claim_display = gr.HTML(visible=False)
-    verdict_display = gr.HTML(visible=False)
-    stance_plot = gr.Plot(visible=False)
-    stance_bar = gr.HTML(visible=False)
-    evidence_card = gr.HTML(visible=False)
-
-    send_btn.click(
-        verify_fn,
-        inputs=[claim_box],
-        outputs=[claim_display, verdict_display, stance_plot, stance_bar, evidence_card]
-    )
-
-    claim_box.submit(
-        verify_fn,
-        inputs=[claim_box],
-        outputs=[claim_display, verdict_display, stance_plot, stance_bar, evidence_card]
-    )
-
-if __name__ == "__main__":
-    ui.launch()
+# ----------------- END -----------------

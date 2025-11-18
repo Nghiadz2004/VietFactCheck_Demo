@@ -1,4 +1,3 @@
-gradio
 transformers
 torch
 sentence-transformers
@@ -17,4 +16,5 @@ aiohttp
 underthesea
 tiktoken
 sentencepiece
+streamlit
 plotly
