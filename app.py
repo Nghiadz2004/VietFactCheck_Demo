@@ -14,6 +14,7 @@ from sentence_transformers import SentenceTransformer, util
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from dotenv import load_dotenv
 import plotly.graph_objects as go
+import textwrap
 
 # ----------------- CONFIG -----------------
 st.set_page_config(page_title="VietFactCheck Pro", layout="wide", page_icon="🛡️")
@@ -484,15 +485,13 @@ def render_result_card(
     }
     v_label, v_class = verdict_display.get(verdict, ("Unproven", "badge-unknown"))
 
-
-    # --- RENDER HTML ---
-    st.markdown(f"""
+    # --- TẠO CHUỖI HTML ---
+    # Lưu ý: Tôi gán vào biến html_content trước
+    html_content = f"""
     <div class="result-card">
 
-      <!-- VERDICT + CONFIDENCE -->
       <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; margin-bottom:18px;">
         
-        <!-- VERDICT -->
         <div style="flex:1">
           <div class="label-small">KẾT LUẬN (VERDICT)</div>
           <div style="margin-top:8px;">
@@ -500,7 +499,6 @@ def render_result_card(
           </div>
         </div>
 
-        <!-- CONFIDENCE -->
         <div style="width:45%; text-align:right;">
           <div class="label-small">ĐỘ TIN CẬY AI (CONFIDENCE)</div>
           <div style="display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:8px;">
@@ -515,7 +513,6 @@ def render_result_card(
       </div>
 
 
-      <!-- STANCE RATIO -->
       <div style="margin-bottom:18px;">
         <div class="label-small">TỈ LỆ QUAN ĐIỂM (STANCE RATIO)</div>
 
@@ -535,7 +532,6 @@ def render_result_card(
       </div>
 
 
-      <!-- BEST EVIDENCE -->
       <div style="border-top:1px solid #232936; padding-top:14px;">
         <div style="font-weight:700; color:#d8e9ff; margin-bottom:10px;">
           Bằng chứng mạnh nhất (Strongest Evidence)
@@ -550,7 +546,8 @@ def render_result_card(
         <div class="evidence-box">"{src_snip}"</div>
       </div>
     </div>
-    """, unsafe_allow_html=True)
+    """
+    st.markdown(textwrap.dedent(html_content), unsafe_allow_html=True)
 
 # ----------------- APP LAYOUT -----------------
 st.title("🔎 Verify a Claim")
