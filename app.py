@@ -366,6 +366,7 @@ def fact_check_full(text: str):
             stance = predict_stance(claim, snippet)
             evidences.append({
                 "text": snippet,
+                "snippet": snippet, 
                 "link": link,
                 "stance_scores": stance,
                 "trust_score": trust
@@ -435,7 +436,7 @@ def render_result_card(
     # --- PARSE EVIDENCE ---
     src_link = best_evidence.get("link", "") if best_evidence else ""
     src_snip = strip_html(
-        best_evidence.get("snippet")
+        best_evidence.get("snippet") or best_evidence.get("text")
         or best_evidence.get("text")
         or ""
     )
