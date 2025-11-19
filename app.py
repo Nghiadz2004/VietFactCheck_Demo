@@ -24,12 +24,28 @@ if "history" not in st.session_state:
 st.markdown(
     """
     <style>
+    /* Fix lỗi tràn khung trên Hugging Face */
+    * { box-sizing: border-box; } 
+    
     .stApp { background-color: #0f1620; color: #e6eef6; font-family: Inter, sans-serif; }
     header {visibility: hidden;}
-    .result-card { background-color: #141821; border: 1px solid #232936; border-radius: 14px; padding: 22px; }
-    .user-bubble { background: linear-gradient(90deg,#1e88e5,#1976d2); color: white; padding:14px 18px; border-radius: 12px; display:inline-block; font-weight:600; }
+    
+    .result-card { 
+        background-color: #141821; 
+        border: 1px solid #232936; 
+        border-radius: 14px; 
+        padding: 22px; 
+        
+        /* THÊM DÒNG NÀY ĐỂ FIX UI */
+        width: 100%;
+        max-width: 100%;
+        overflow: hidden; /* Ẩn nội dung thừa nếu có */
+        box-sizing: border-box;
+    }
+    
+    .user-bubble { background: linear-gradient(90deg,#1e88e5,#1976d2); color: white; padding:14px 18px; border-radius: 12px; display:inline-block; font-weight:600; max-width: 80%; }
     .label-small { color:#9aa6b2; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; }
-    .evidence-box { background:#0e1620; border-left:4px solid #1e88e5; padding:14px; border-radius:8px; color:#cfe7ff; font-style:italic; }
+    .evidence-box { background:#0e1620; border-left:4px solid #1e88e5; padding:14px; border-radius:8px; color:#cfe7ff; font-style:italic; margin-top: 8px;}
     .badge { padding:6px 14px; border-radius:20px; font-weight:700; font-size:13px; display:inline-block; }
     .badge-supported { background:#e8f6ec; color:#1b5e20; border:1px solid #1b5e20; }
     .badge-refuted { background:#fdecea; color:#7b1e1e; border:1px solid #7b1e1e; }
@@ -40,6 +56,9 @@ st.markdown(
     .st-sup { background:#29b06f; }
     .st-ref { background:#ff6b6b; }
     .st-neu { background:#7a7f86; }
+    
+    /* Fix Plotly chart margin nếu cần */
+    .js-plotly-plot .plotly .modebar { transform: translateY(100%); }
     </style>
     """,
     unsafe_allow_html=True,
@@ -585,7 +604,7 @@ if send and txt.strip():
             })
 
             # render card hiện tại
-            left, right = st.columns([7,3])
+            left, right = st.columns([2,1], gap="medium")
             with left:
                 render_result_card(md, ratio, txt, best_ev, verdict, confidence)
                 with st.expander("Xem chi tiết kết quả (markdown)"):
@@ -615,7 +634,7 @@ if st.session_state["history"]:
     for item in st.session_state["history"]:
         st.markdown(f'<div class="user-bubble">👤 "{strip_html(item["question"])}"</div>', unsafe_allow_html=True)
         
-        left, right = st.columns([7,3])
+        left, right = st.columns([2,1], gap="medium")
         with left:
             render_result_card(
                 item["result_md"],
