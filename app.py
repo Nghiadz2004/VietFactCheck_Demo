@@ -634,7 +634,7 @@ else:
 # HIỂN THỊ LỊCH SỬ TRƯỚC
 # ==========================
 if st.session_state["history"]:
-    st.markdown("## 💬 Lịch sử trước đó")
+    st.markdown("## 💬 Lịch sử")
     for idx, item in enumerate(st.session_state["history"]):
         
         st.markdown(
