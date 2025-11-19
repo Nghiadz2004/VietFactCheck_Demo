@@ -610,7 +610,7 @@ if send and txt.strip():
             with left:
                 render_result_card(md, ratio, txt, best_ev, verdict, confidence)
                 with st.expander("Xem chi tiết kết quả (markdown)"):
-                    st.markdown(md)
+                    st.code(md, language="markdown")
 
             with right:
                 fig = render_stance_chart(ratio)
@@ -630,25 +630,33 @@ else:
     )
     st.write("")
 
+# ==========================
+# HIỂN THỊ LỊCH SỬ TRƯỚC
+# ==========================
 if st.session_state["history"]:
-    st.markdown("## 💬 Lịch sử trò chuyện")
-
-    for item in st.session_state["history"]:
-        st.markdown(f'<div class="user-bubble">👤 "{strip_html(item["question"])}"</div>', unsafe_allow_html=True)
+    st.markdown("## 💬 Lịch sử trước đó")
+    for idx, item in enumerate(st.session_state["history"]):
         
-        left, right = st.columns([2,1], gap="medium")
+        st.markdown(
+            f'<div class="user-bubble">👤 "{strip_html(item["question"])}"</div>', 
+            unsafe_allow_html=True
+        )
+
+        left, right = st.columns([2, 1], gap="medium")
+
         with left:
             render_result_card(
-                item["result_md"],
-                item["stance_ratio"],
-                item["question"],
-                item["best_ev"],
-                item["verdict"],
-                item["confidence"]
+                md_text=item["result_md"],
+                stance_ratio=item["stance_ratio"],
+                claim_text=item["question"],
+                best_evidence=item["best_ev"],   # FIXED HERE
+                verdict=item["verdict"],
+                confidence=item["confidence"]
             )
+
         with right:
             fig = render_stance_chart(item["stance_ratio"])
-            st.plotly_chart(fig, use_container_width=True, key=f"history_chart_{item['question']}_{len(st.session_state['history'])}")
+            st.plotly_chart(fig, use_container_width=True, key=f"hist_{idx}")
 
         st.markdown("---")
         
