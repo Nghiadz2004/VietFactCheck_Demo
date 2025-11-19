@@ -425,6 +425,13 @@ def strip_html(text: str) -> str:
     text = text.replace("&nbsp;", " ").replace("&quot;", '"')
     return text.strip()
 
+def clean_snippet(text: str) -> str:
+    if not text:
+        return ""
+    # xoá comment HTML <!-- ... -->
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+    return text.strip()
+
 def render_result_card(
     md_text: str,
     stance_ratio: dict,
@@ -435,11 +442,13 @@ def render_result_card(
 ):
     # --- PARSE EVIDENCE ---
     src_link = best_evidence.get("link", "") if best_evidence else ""
-    src_snip = strip_html(
-        best_evidence.get("snippet") or best_evidence.get("text")
+    raw_snip = (
+        best_evidence.get("snippet")
         or best_evidence.get("text")
         or ""
     )
+    raw_snip = clean_snippet(raw_snip)
+    src_snip = strip_html(raw_snip)
     src_domain = tldextract.extract(src_link).domain if src_link else "N/A"
 
     # --- CONFIDENCE ---
