@@ -407,11 +407,13 @@ def fact_check_full(text: str):
             final_confidence = agg["confidence"]
             final_best_evidence = best
 
+        clean_txt = strip_html(clean_snippet(best["text"]))
+
         blocks.append(
             f"### Claim: **{claim}**\n"
             f"Kết luận: **{agg['verdict']}** (độ tin cậy: {agg['confidence']:.2f})\n\n"
             f"**Bằng chứng mạnh nhất:**\n- Nguồn: {best['link']}\n"
-            f"- Nội dung: {best['text'][:600]}...\n"
+            f"- Nội dung: {clean_txt[:600]}...\n"
         )
 
     return {
