@@ -609,7 +609,7 @@ if send and txt.strip():
             left, right = st.columns([2,1], gap="medium")
             with left:
                 render_result_card(ratio, txt, best_ev, verdict, confidence)
-                with st.expander("Xem chi tiết kết quả (markdown)"):
+                with st.expander("Xem chi tiết kết quả"):
                     st.markdown(md)
 
             with right:
