@@ -454,39 +454,36 @@ def clean_snippet(text: str) -> str:
     return text.strip()
 
 def render_result_card(
-    md_text: str,
     stance_ratio: dict,
     claim_text: str,
     best_evidence: dict,
     verdict: str,
     confidence: float
 ):
-    # --- PARSE EVIDENCE ---
-    src_link = best_evidence.get("link", "") if best_evidence else ""
-    raw_snip = (
-        best_evidence.get("snippet")
-        or best_evidence.get("text")
-        or ""
-    )
-    raw_snip = clean_snippet(raw_snip)
-    src_snip = strip_html(raw_snip)
-    src_domain = tldextract.extract(src_link).domain if src_link else "N/A"
+    if not best_evidence:
+        src_link = ""
+        src_snip = "Không có bằng chứng."
+        src_domain = "N/A"
+    else:
+        src_link = best_evidence.get("link", "")
+        raw_snip = best_evidence.get("snippet") or best_evidence.get("text") or ""
+        raw_snip = clean_snippet(raw_snip)
+        src_snip = strip_html(raw_snip)
+        src_domain = tldextract.extract(src_link).domain if src_link else "N/A"
 
-    # --- CONFIDENCE ---
     confidence_pct = int(round(confidence * 100))
 
-    # --- STANCE ---
-    s = stance_ratio.get("Support", 0.0) * 100
-    ref = stance_ratio.get("Refute", 0.0) * 100
-    neu = stance_ratio.get("Neutral", 0.0) * 100
+    s = stance_ratio.get("Support", 0) * 100
+    ref = stance_ratio.get("Refute", 0) * 100
+    neu = stance_ratio.get("Neutral", 0) * 100
 
-    # --- VERDICT BADGE ---
     verdict_display = {
         "True": ("Supported", "badge-supported"),
         "False": ("Refuted", "badge-refuted"),
         "Unknown": ("Unproven", "badge-unknown")
     }
     v_label, v_class = verdict_display.get(verdict, ("Unproven", "badge-unknown"))
+
 
     # --- RENDER HTML ---
     st.markdown(f"""
@@ -608,7 +605,7 @@ if send and txt.strip():
             # render card hiện tại
             left, right = st.columns([2,1], gap="medium")
             with left:
-                render_result_card(md, ratio, txt, best_ev, verdict, confidence)
+                render_result_card(ratio, txt, best_ev, verdict, confidence)
                 with st.expander("Xem chi tiết kết quả (markdown)"):
                     st.code(md, language="markdown")
 
@@ -646,10 +643,9 @@ if st.session_state["history"]:
 
         with left:
             render_result_card(
-                md_text=item["result_md"],
                 stance_ratio=item["stance_ratio"],
                 claim_text=item["question"],
-                best_evidence=item["best_ev"],   # FIXED HERE
+                best_evidence=item["best_ev"],
                 verdict=item["verdict"],
                 confidence=item["confidence"]
             )
