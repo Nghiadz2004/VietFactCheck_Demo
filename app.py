@@ -486,7 +486,7 @@ def render_result_card(
     v_label, v_class = verdict_display.get(verdict, ("Unproven", "badge-unknown"))
 
     # --- TẠO CHUỖI HTML ---
-    # Lưu ý: Tôi gán vào biến html_content trước
+    # Bạn cứ viết thụt dòng thoải mái cho dễ nhìn ở đây
     html_content = f"""
     <div class="result-card">
 
@@ -547,7 +547,13 @@ def render_result_card(
       </div>
     </div>
     """
-    st.markdown(textwrap.dedent(html_content), unsafe_allow_html=True)
+    
+    # --- KHẮC PHỤC TRIỆT ĐỂ ---
+    # Sử dụng regex để thay thế mọi khoảng trắng/xuống dòng thừa thành 1 dấu cách duy nhất
+    # Biến toàn bộ HTML thành 1 dòng dài (minified)
+    html_content = re.sub(r'\s+', ' ', html_content).strip()
+    
+    st.markdown(html_content, unsafe_allow_html=True)
 
 # ----------------- APP LAYOUT -----------------
 st.title("🔎 Verify a Claim")
@@ -604,7 +610,7 @@ if send and txt.strip():
             with left:
                 render_result_card(ratio, txt, best_ev, verdict, confidence)
                 with st.expander("Xem chi tiết kết quả (markdown)"):
-                    st.code(md, language="markdown")
+                    st.markdown(md)
 
             with right:
                 fig = render_stance_chart(ratio)
