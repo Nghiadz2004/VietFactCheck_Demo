@@ -39,10 +39,22 @@ class Module_4:
         # 1. Cấu hình thiết bị
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         logger.info(f"🚀 Initializing Module_4 on device: {self.device}")
-
+        ###############
         # 2. Cấu hình & Tải VnCoreNLP (Word Segmenter)
+        docker_model_path = '/app/vncorenlp'
+
+        # Đường dẫn fallback khi chạy local (trên máy tính của bạn)
+        local_model_path = os.path.join(os.getcwd(), "vncorenlp_models")
+
+        if os.path.exists(docker_model_path) and os.path.exists(os.path.join(docker_model_path, "VnCoreNLP-1.2.jar")):
+            logger.info(f"✅ Found baked-in VnCoreNLP model at {docker_model_path}")
+            self.vncorenlp_dir = docker_model_path
+        else:
+            logger.info("⚠️ Baked-in model not found. Checking local storage...")
+            self.vncorenlp_dir = local_model_path
+
         # Sử dụng đường dẫn tuyệt đối để tránh lỗi relative path
-        self.vncorenlp_dir = os.path.join(os.getcwd(), "vncorenlp_models")
+        #self.vncorenlp_dir = os.path.join(os.getcwd(), "vncorenlp_models")
         
         # Kiểm tra file quan trọng: .jar và folder models. Nếu thiếu 1 trong 2 -> Tải lại
         jar_path = os.path.join(self.vncorenlp_dir, "VnCoreNLP-1.2.jar")

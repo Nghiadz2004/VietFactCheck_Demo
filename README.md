@@ -1,10 +1,10 @@
 ---
 title: Vietfactcheck Demo
-emoji: 📚
+emoji: 🛡️
 colorFrom: red
 colorTo: purple
-sdk: streamlit
-app_file: app.py
+sdk: docker
+app_port: 7860
 pinned: false
 license: mit
 ---
