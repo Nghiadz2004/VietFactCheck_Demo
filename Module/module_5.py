@@ -73,14 +73,15 @@ class Module_5:
 
         ratio = {k: v / total_weight for k, v in weights.items()}
 
-        if ratio["Support"] > 0.5:
+        max_label = max(ratio, key=ratio.get)
+        confidence = ratio[max_label]
+
+        if max_label == "Support":
             verdict = "True"
-        elif ratio["Refute"] > 0.5:
+        elif max_label == "Refute":
             verdict = "False"
         else:
             verdict = "Unknown"
-
-        confidence = max(ratio.values())
 
         return {
             "verdict": verdict,
@@ -138,7 +139,16 @@ Yêu cầu:
                 continue
 
             agg = self.aggregate_verdict_weighted(evidences)
-            best_ev = max(evidences, key=lambda e: e.get("stance_score", 0.0))
+            alpha = 0.55   # ưu tiên stance 55%
+            beta = 0.45    # ưu tiên cross-encoder 45%
+
+            def compute_combined(e):
+                stance = float(e.get("stance_score", 0.0))
+                rerank = float(e.get("rerank_score", 0.0))
+
+                return alpha * stance + beta * rerank
+
+            best_ev = max(evidences, key=compute_combined)
 
             justification = self.generate_justification(
                 claim, agg["verdict"], best_ev, agg["stance_ratio"]
