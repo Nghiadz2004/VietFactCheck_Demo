@@ -108,7 +108,7 @@ def render_result_card(
     best_evidence: dict,
     verdict: str,
     confidence: float,
-    justification: str  # <--- THÊM THAM SỐ NÀY
+    justification: str
 ):
     if not best_evidence:
         src_link = ""
@@ -163,7 +163,7 @@ def render_result_card(
 
         <hr style="border-color:#232936;margin:18px 0;">
 
-        <div class="label-small">GIẢI THÍCH CHI TIẾT (AI)</div>
+        <div class="label-small">GIẢI THÍCH CHI TIẾT</div>
         <div class="justification-box">{justification_html}</div>
         
         <div style="margin-top:18px;"></div>
@@ -258,7 +258,7 @@ if st.session_state["history"]:
                 item["best"],
                 item["verdict"],
                 item["confidence"],
-                hist_just # <--- TRUYỀN VÀO RENDER
+                hist_just
             )
 
         with right:
