@@ -171,35 +171,39 @@ with st.form("input_form"):
 # ON SUBMIT
 # =========================
 if sent and user_input.strip():
-    col1, col2 = st.columns([2, 1])
     with st.spinner("Đang phân tích..."):
         result = asyncio.run(Fact_Checking_Pipeline(user_input.strip()))
         
         for i, (c, r) in enumerate(result.items()):
+            # --- Lấy dữ liệu ---
             ratio = r["stance_ratio"]
             best = r["best_evidence"]
             verdict = r["verdict"]
             conf = round(r["confidence"], 3)
 
-            # lưu lịch sử
+            # Lưu lịch sử (giữ nguyên)
             st.session_state["history"].append({
-                "question": r["claim"],
-                "ratio": ratio,
-                "best": best,
-                "verdict": verdict,
-                "confidence": conf
+                "question": r["claim"], "ratio": ratio, "best": best,
+                "verdict": verdict, "confidence": conf
             })
-        
-            with col1:
-                st.markdown(f'<div class="user-bubble">👤 "{strip_html(user_input)}"</div>', unsafe_allow_html=True)
-                st.write("")
-                render_result_card(ratio, user_input, best, verdict, conf)
+            
+            # --- GIAO DIỆN ---
+            # Tạo một container cho từng result để gom nhóm
+            with st.container():
+                # QUAN TRỌNG: Khai báo cột BÊN TRONG vòng lặp
+                col1, col2 = st.columns([2, 1]) 
+                
+                with col1:
+                    st.markdown(f'<div class="user-bubble">👤 "{strip_html(r["claim"])}"</div>', unsafe_allow_html=True)
+                    st.write("")
+                    render_result_card(ratio, user_input, best, verdict, conf)
 
-            with col2:
-                fig = render_stance_chart(ratio)
-                st.plotly_chart(fig, use_container_width=True, key=f"id_{i}")
-
-    st.markdown("---")
+                with col2:
+                    fig = render_stance_chart(ratio)
+                    st.plotly_chart(fig, use_container_width=True, key=f"id_{i}")
+            
+            # Kẻ đường phân cách sau khi render xong 2 cột của item này
+            st.divider()
 
 # =========================
 # HISTORY
