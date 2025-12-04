@@ -49,6 +49,19 @@ st.markdown(
     .st-neu { background:#7a7f86; }
 
     .evidence-box { background:#0e1620; border-left:4px solid #1e88e5; padding:14px; border-radius:8px; color:#cfe7ff; font-style:italic; margin-top: 8px;}
+    
+    /* CSS MỚI CHO JUSTIFICATION */
+    .justification-box {
+        background-color: #1c222e;
+        border: 1px dashed #3a4149;
+        border-radius: 8px;
+        padding: 12px;
+        margin-top: 8px;
+        color: #e0e0e0;
+        font-size: 14px;
+        line-height: 1.5;
+        white-space: pre-wrap; /* Giữ xuống dòng từ GPT */
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -87,14 +100,15 @@ def render_stance_chart(ratio: dict) -> go.Figure:
 
 
 # =========================
-# RENDER RESULT CARD
+# RENDER RESULT CARD (UPDATED)
 # =========================
 def render_result_card(
     stance_ratio: dict,
     claim_text: str,
     best_evidence: dict,
     verdict: str,
-    confidence: float
+    confidence: float,
+    justification: str  # <--- THÊM THAM SỐ NÀY
 ):
     if not best_evidence:
         src_link = ""
@@ -119,6 +133,9 @@ def render_result_card(
     }
 
     v_label, v_class = verdict_map.get(verdict, ("Unproven", "badge-unknown"))
+
+    # Xử lý justification: thay xuống dòng bằng thẻ <br> nếu cần, hoặc để CSS xử lý
+    justification_html = strip_html(justification) if justification else "Không có giải thích chi tiết."
 
     html = f"""
     <div class="result-card">
@@ -146,10 +163,15 @@ def render_result_card(
 
         <hr style="border-color:#232936;margin:18px 0;">
 
+        <div class="label-small">GIẢI THÍCH CHI TIẾT (AI)</div>
+        <div class="justification-box">{justification_html}</div>
+        
+        <div style="margin-top:18px;"></div>
+
         <div class="label-small">NGUỒN</div>
         🌐 <a href="{src_link}" target="_blank" style="color:#8fcfff;"><b>{src_domain}</b></a>
 
-        <div class="label-small" style="margin-top:10px;">TRÍCH DẪN</div>
+        <div class="label-small" style="margin-top:10px;">TRÍCH DẪN GỐC</div>
         <div class="evidence-box">"{src_snip}"</div>
     </div>
     """
@@ -171,43 +193,54 @@ with st.form("input_form"):
 # ON SUBMIT
 # =========================
 if sent and user_input.strip():
-    col1, col2 = st.columns([2, 1])
     with st.spinner("Đang phân tích..."):
+        # Gọi Pipeline logic.py
         result = asyncio.run(Fact_Checking_Pipeline(user_input.strip()))
         
-        for i, (c, r) in enumerate(result.items()):
-            ratio = r["stance_ratio"]
-            best = r["best_evidence"]
-            verdict = r["verdict"]
-            conf = round(r["confidence"], 3)
+        if result: # Kiểm tra nếu có kết quả
+            for i, (c, r) in enumerate(result.items()):
+                # --- Lấy dữ liệu ---
+                ratio = r["stance_ratio"]
+                best = r["best_evidence"]
+                verdict = r["verdict"]
+                conf = round(r["confidence"], 3)
+                justification = r.get("justification", "Đang cập nhật...") # <--- LẤY JUSTIFICATION TỪ RESULT
 
-            # lưu lịch sử
-            st.session_state["history"].append({
-                "question": r["claim"],
-                "ratio": ratio,
-                "best": best,
-                "verdict": verdict,
-                "confidence": conf
-            })
-        
-            with col1:
-                st.markdown(f'<div class="user-bubble">👤 "{strip_html(user_input)}"</div>', unsafe_allow_html=True)
-                st.write("")
-                render_result_card(ratio, user_input, best, verdict, conf)
+                # Lưu lịch sử (Cập nhật thêm field justification)
+                st.session_state["history"].append({
+                    "question": r["claim"], 
+                    "ratio": ratio, 
+                    "best": best,
+                    "verdict": verdict, 
+                    "confidence": conf,
+                    "justification": justification # <--- LƯU VÀO HISTORY
+                })
+                
+                # --- GIAO DIỆN ---
+                with st.container():
+                    col1, col2 = st.columns([2, 1]) 
+                    
+                    with col1:
+                        st.markdown(f'<div class="user-bubble">👤 "{strip_html(r["claim"])}"</div>', unsafe_allow_html=True)
+                        st.write("")
+                        # Truyền justification vào hàm render
+                        render_result_card(ratio, user_input, best, verdict, conf, justification)
 
-            with col2:
-                fig = render_stance_chart(ratio)
-                st.plotly_chart(fig, use_container_width=True, key=f"id_{i}")
-
-    st.markdown("---")
+                    with col2:
+                        fig = render_stance_chart(ratio)
+                        st.plotly_chart(fig, use_container_width=True, key=f"id_{i}")
+                
+                st.divider()
+        else:
+            st.warning("Không tìm thấy thông tin hoặc có lỗi xảy ra.")
 
 # =========================
-# HISTORY
+# HISTORY (UPDATED)
 # =========================
 if st.session_state["history"]:
     st.subheader("Lịch sử kiểm chứng")
 
-    for idx, item in enumerate(st.session_state["history"]):
+    for idx, item in enumerate(reversed(st.session_state["history"])): # Đảo ngược để thấy cái mới nhất trước
 
         st.markdown(
             f'<div class="user-bubble">👤 "{strip_html(item["question"])}"</div>',
@@ -217,12 +250,15 @@ if st.session_state["history"]:
         left, right = st.columns([2, 1])
 
         with left:
+            # Lấy justification từ history, fallback nếu lịch sử cũ không có
+            hist_just = item.get("justification", "")
             render_result_card(
                 item["ratio"],
                 item["question"],
                 item["best"],
                 item["verdict"],
-                item["confidence"]
+                item["confidence"],
+                hist_just # <--- TRUYỀN VÀO RENDER
             )
 
         with right:
